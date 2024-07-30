@@ -216,3 +216,154 @@ void ixgStream::gstBasePipe::stop(bool *start, bool action) {
   gst_element_set_state(P, GST_STATE_NULL);
   gst_object_unref(P);
 }
+
+int ixgStream::gstOutputTeePipe::gstOutputPipeStart(GstElement *P,
+                                                    ixg::ixgElement **elemt,
+                                                    int pch, int cch) {
+  // GstPad *sinkpad;
+  GstPadTemplate *muxtempl;
+
+  if ((elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgtype == srt) ||
+      (elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgtype == multicast) ||
+      (elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgtype == record) ||
+      (elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgtype == delay))
+    muxtee = gst_bin_get_by_name(GST_BIN(P), "mpegtsmuxtee");
+  else
+    muxtee = gst_bin_get_by_name(GST_BIN(P), "flvmuxertee");
+
+  if (!muxtee) {
+    gst_print("no element with name \"muxtee\" found\n");
+    gst_object_unref(P);
+    return -3;
+  }
+
+  muxtempl = gst_element_class_get_pad_template(GST_ELEMENT_GET_CLASS(muxtee),
+                                                "src_%u");
+  muxteepad = gst_element_request_pad(muxtee, muxtempl, NULL, NULL);
+  queue_mux = gst_element_factory_make("queue", NULL);
+
+  if (elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgtype == srt) { // srt
+    sink = gst_element_factory_make("srtsink", NULL);
+    g_object_set(sink, "uri",
+                 elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgIp._ixgSrt.uri,
+                 "wait-for-connection", true, "poll-timeout", 2000, NULL);
+
+  } else if (elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgtype ==
+             multicast) { // multicast
+    cout << "calling multicast" << endl;
+    sink = gst_element_factory_make("udpsink", NULL);
+    g_object_set(
+        sink, "host",
+        elemt[pch]
+            ->__ixgElemt.__ixgteeOutput[cch]
+            ._ixgIp._ixgMulticast.ip.c_str(),
+        "port",
+        elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgIp._ixgMulticast.port,
+        NULL);
+  } else if (elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgtype ==
+             rtmp) { // rtmp
+    sink = gst_element_factory_make("rtmpsink", NULL);
+    g_object_set(
+        sink, "location",
+        elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgIp._ixgRtmp.url.c_str(),
+        NULL);
+  } else if (elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgtype ==
+             record) { // record mpegts type only now
+    sink = gst_element_factory_make("filesink", NULL);
+    string location =
+        elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgRec.rec_location;
+    g_object_set(sink, "location", location.c_str(), NULL);
+  } else if (elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgtype ==
+             delay) { // delay
+    sink = gst_element_factory_make("multifilesink", NULL);
+    string location =
+        elemt[pch]->__ixgElemt.__ixgteeOutput[cch]._ixgDelay.rec_location +
+        "/test-%05d.ts";
+    g_object_set(sink, "location", location.c_str(), "next-file", 2,
+                 "max-files", 60, "min-keyframe-distance", 30000000000, "index",
+                 0, "aggregate-gops", true, NULL);
+  }
+
+  gst_bin_add_many(GST_BIN(P), queue_mux, sink, NULL);
+  gst_element_link_many(queue_mux, sink, NULL);
+
+  gst_element_sync_state_with_parent(queue_mux);
+  gst_element_sync_state_with_parent(sink);
+
+  sinkpad = gst_element_get_static_pad(queue_mux, "sink");
+  gst_pad_link(muxteepad, sinkpad);
+  // gst_object_unref(sinkpad);
+
+  return 0;
+}
+
+static GstPadProbeReturn unlink_output_cb(GstPad *pad, GstPadProbeInfo *info,
+                                          gpointer user_data) {
+  g_print("Unlinking.........1\n");
+
+  GstPad *sinkpad;
+  ixgStream::gstOutputTeePipe *gstData =
+      static_cast<ixgStream::gstOutputTeePipe *>(user_data);
+  sinkpad = gst_element_get_static_pad(gstData->queue_mux, "sink");
+
+  // Softly unlink the pads from the tee
+  gst_pad_send_event(sinkpad, gst_event_new_flush_start());
+  gst_pad_unlink(gstData->muxteepad, sinkpad);
+  // gst_pad_send_event(sinkpad, gst_event_new_flush_stop(false));
+  gst_element_send_event(gstData->sink, gst_event_new_eos());
+  // gst_pad_unlink (gstData->muxteepad, sinkpad);
+  gst_object_unref(sinkpad);
+
+  // gst_element_send_event(gstData->sink, gst_event_new_eos());
+  // g_usleep(2000000);
+  return GST_PAD_PROBE_REMOVE;
+}
+
+void ixgStream::gstOutputTeePipe::gstOutputPipeStop(GstElement *P, int type) {
+  // g_print("stop srt in type mode\n");
+  PP = P;
+  outType = type;
+  gst_pad_add_probe(muxteepad, GST_PAD_PROBE_TYPE_IDLE, unlink_output_cb, this,
+                    NULL);
+  finalize();
+  PP = NULL;
+  outType = -1;
+}
+
+void ixgStream::gstOutputTeePipe::finalize() {
+  GstElement *tee;
+
+  if (outType == 1)
+    tee = gst_bin_get_by_name(GST_BIN(PP), "mpegtsmuxtee");
+  else if (outType == 2)
+    tee = gst_bin_get_by_name(GST_BIN(PP), "flvmuxtee");
+  else {
+    cout << "tee not fount:No action" << endl;
+    return;
+  }
+
+  if (!tee) {
+    gst_print("no element with name \"tee\" found\n");
+    gst_object_unref(PP);
+  }
+
+  gst_element_set_state(queue_mux, GST_STATE_PAUSED);
+  gst_element_set_state(sink, GST_STATE_PAUSED);
+
+  gst_element_set_state(queue_mux, GST_STATE_NULL);
+  gst_element_set_state(sink, GST_STATE_NULL);
+
+  gst_bin_remove(GST_BIN(PP), queue_mux);
+  gst_bin_remove(GST_BIN(PP), sink);
+
+  // int count = GST_OBJECT_REFCOUNT( queue_aenc );
+  // cout<<"queue_aenc count: "<<count<<endl;
+
+  // gst_object_unref(queue_mux);
+  // gst_object_unref(sink);
+
+  gst_element_release_request_pad(tee, muxteepad);
+  gst_object_unref(muxteepad);
+
+  g_print("Unlinked\n");
+}
