@@ -1,0 +1,13 @@
+Source: ixgencoder
+Priority: optional
+Maintainer: ixg Developers 
+Build-Depends: debhelper (>= 8.0.0), devscripts
+Standards-Version: 4.1.0
+Section: utils
+
+Package: ixgencoder
+Priority: optional
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Transport video from single input to multiple destination
+ A GStreamer element to encode and transport video

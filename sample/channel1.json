@@ -1,0 +1,83 @@
+{
+    "input": {
+        "type": "SDI",
+        "active": true, 
+        "config": {
+            "source": 0,
+            "format": "1080p5994"
+        }
+    },
+    "encoding": {
+        "use_hardware" : true, 
+        "bitrate" : "8000",
+        "max_bitrate" : "12000",
+        "bitrate_mode" : "cbr",
+        "codec" : "h264",
+        "framerate" : "59.94",
+        "size" : 
+        {
+            "hight" : 1080,
+            "width" : 1920
+        },
+        "gop_size" : "120",
+        "preset"  : "medium"
+    },
+    "output": {
+            "type": "Multicast",
+            "active":true,
+            "config": { 
+                "IP": "226.1.1.5",
+                "Port": 5000
+            }
+    },
+    "teeOutputs": [
+        {
+            "type": "Multicast",
+            "active":true,
+            "config": { 
+                "IP": "226.1.1.5",
+                "Port": 5000
+            }
+        },
+        {
+            "type": "SRT",
+            "active" :true,
+            "config": {
+                "srtNo" : 0,
+                "IP": "192.168.1.192",
+                "port": 6000,
+                "mode": "caller",
+                "uri": "srt://:6000?mode=listener"
+            }
+        },
+        {
+            "type": "SRT",
+            "active" :true,
+            "config": {
+                "srtNo" : 0,
+                "IP": "192.168.1.192",
+                "port": 5000,
+                "mode": "caller",
+                "uri": "srt://:5000?mode=listener"
+            }
+        },
+        {
+            "type": "Record",
+            "active" :false,
+            "config": {
+                "location": "/home/nityanand-pc/Desktop/ixg_encoder/record/1/out.ts"
+            }
+        },
+        {
+            "type": "Delay",
+            "active": false,
+            "delay" : 300,
+            "config":{
+                "source" : "SDI",
+                "location": "/home/nityanand-pc/Desktop/ixg_encoder/record",
+                "url": "rtmp://a.rtmp.youtube.com/live2/x/yzqm-vk2g-xwkc-u4uw-e2d9"
+            }
+            
+        }
+    ]
+}
