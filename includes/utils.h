@@ -6,9 +6,20 @@
 
 using namespace std;
 
-typedef enum { sdi, ip, file, device, testsrc } _type;
+typedef enum {
+  sdi,
+  ip,
+  multicast,
+  srt,
+  rtmp,
+  file,
+  device,
+  testsrc,
+  record,
+  delay
+} _type;
 
-typedef enum { multicast, srt, rtmp } _iptype;
+// typedef enum { multicast, srt, rtmp } _iptype;
 
 typedef std::string _ixgStr;
 typedef int _ixgInt;
@@ -37,7 +48,7 @@ typedef struct rtmp {
 } _rtmp;
 
 typedef struct _ip {
-  _iptype _ixgIptype;
+  _type _ixgIptype;
   _multicast _ixgMulticast;
   _srt _ixgSrt;
   _rtmp _ixgRtmp;
@@ -106,6 +117,7 @@ typedef struct _ixgParameters {
 
 typedef struct registerTeeOutputList {
   _ixgStr name;
+  _ixgbool active;
 } _regOutputList;
 
 namespace ixg {
